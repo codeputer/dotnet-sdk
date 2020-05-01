@@ -6,6 +6,10 @@
 namespace ActorClient
 {
     using System;
+    using System.Net.Http;
+    using System.Net.Http.Headers;
+    using System.Text;
+    using System.Text.Json;
     using System.Threading.Tasks;
     using Dapr.Actors;
     using Dapr.Actors.Client;
@@ -18,6 +22,8 @@ namespace ActorClient
     {
         /// <summary>
         /// Entry point.
+        /// before running this, the actor must also be running
+        /// dapr run --port 3500 --app-id appTestActorMiddleware --app-port 5000 dotnet run
         /// </summary>
         /// <param name="args">Arguments.</param>
         /// <returns>A <see cref="Task"/> representing the asynchronous operation.</returns>
@@ -28,6 +34,7 @@ namespace ActorClient
                 PropertyA = "ValueA",
                 PropertyB = "ValueB",
             };
+
 
             // Create an actor Id.
             var actorId = new ActorId("abc");
@@ -42,8 +49,46 @@ namespace ActorClient
             var receivedData = await proxy.GetData();
             Console.WriteLine($"Received data is {receivedData}.");
 
-            // Making some more calls to test methods.
+            //making the same call via externall HTTP call to the actor
+            HttpClient httpClient = new HttpClient();
+
+            string formURLEncodedContent = "PropertyA=ValueA&PropertyB=ValueB";
+            JsonSerializerOptions options = new JsonSerializerOptions()
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                PropertyNameCaseInsensitive = true,
+            };
+
+            //test to show that middle ware is active
+            var request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:5000/AppPortEndPoint")
+            {
+                Content = new StringContent("", Encoding.UTF8)
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+            var response = await httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            string JsonPayload = "{\"PropertyA\":\"ValueA\",\"PropertyB\":\"ValueB\"}";
+            request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:3500/v1.0/actors/DemoActor/123/method/SaveData")
+            {
+                Content = new StringContent(JsonPayload, Encoding.UTF8)
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+             response = await httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            request = new HttpRequestMessage(HttpMethod.Post, "http://localhost:3500/v1.0/actors/DemoActor/123/method/SaveData")
+            {
+                Content = new StringContent(formURLEncodedContent, Encoding.UTF8)
+            };
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/x-www-form-urlencoded");
+
+            response = await httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
             try
+            // Making some more calls to test methods.
             {
                 Console.WriteLine("Making calls to an actor method which has no argument and no return type.");
                 await proxy.TestNoArgumentNoReturnType();
